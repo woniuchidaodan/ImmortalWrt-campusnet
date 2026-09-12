@@ -89,7 +89,7 @@ def drcom_page() -> str:
 @pytest.fixture
 def ctx_drcom(drcom_page) -> DetectContext:
     return DetectContext(
-        url="http://210.28.39.250/",
+        url="http://10.20.30.1/",
         text=drcom_page,
         headers={"server": "DrcomServer1.0"},
     )

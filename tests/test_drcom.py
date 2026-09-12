@@ -26,7 +26,7 @@ def test_login_sends_expected_fields():
     session = FakeSession([("/drcom/login", make_response(JSONP_OK))])
     provider = DrComProvider(session, {"carrier": "校园用户"})
 
-    result = provider.login("http://210.28.39.250/", "2024123456", "p@ss word", "10.0.0.5", "aabbccddeeff")
+    result = provider.login("http://10.20.30.1/", "2024123456", "p@ss word", "10.0.0.5", "aabbccddeeff")
 
     assert result.ok is True
     call = session.find("/drcom/login")

@@ -22,13 +22,72 @@ from .runner import Runner
 from .session import Session, local_ip, local_mac
 
 # -------------------------------------------------------------------- 输出
+#: 日志级别 → (Unicode 标记, 颜色码, ASCII 降级标记)
 LEVEL_MARK = {
-    "debug": ("·", "90"),
-    "info": ("•", "36"),
-    "ok": ("✔", "32"),
-    "warn": ("!", "33"),
-    "error": ("✘", "31"),
+    "debug": ("·", "90", "."),
+    "info": ("•", "36", "-"),
+    "ok": ("✔", "32", "v"),
+    "warn": ("!", "33", "!"),
+    "error": ("✘", "31", "x"),
 }
+
+#: 装饰性字符的 ASCII 替代。控制台编码编不出这些符号时用它，避免直接崩。
+ASCII_TRANSLATION = {
+    ord("─"): "-", ord("│"): "|", ord("✔"): "v", ord("✘"): "x",
+    ord("•"): "-", ord("·"): ".", ord("★"): "*", ord("→"): "->",
+    ord("…"): "...",
+}
+
+
+def _stream_encoding(stream) -> str:
+    return getattr(stream, "encoding", None) or "ascii"
+
+
+def _can_encode(stream, text: str) -> bool:
+    """这个输出流编不编得出这段文本。"""
+    try:
+        text.encode(_stream_encoding(stream))
+        return True
+    except (UnicodeEncodeError, LookupError, TypeError):
+        return False
+
+
+def _safe_write(stream, text: str) -> None:
+    """写不出去也绝不能崩。
+
+    中文 Windows 的控制台是 cp936，显示中文没问题；但 GitHub Actions 的 Windows
+    runner（cp1252）连中文都编不出来，直接 ``print`` 会抛 ``UnicodeEncodeError``
+    把整个命令打挂 —— 这曾让 Windows 上三个 Python 版本的 CI 全红。
+    这里做两级兜底：先原样写，不行就退到 ASCII 替代字符再写。
+    """
+    if stream is None:
+        return
+    try:
+        stream.write(text)
+        return
+    except UnicodeEncodeError:
+        pass
+    enc = _stream_encoding(stream)
+    try:
+        stream.write(text.translate(ASCII_TRANSLATION).encode(enc, "replace").decode(enc, "replace"))
+    except Exception:  # noqa: BLE001 - 实在写不出去就放弃输出，但绝不抛
+        pass
+
+
+def ensure_output_encoding() -> None:
+    """需要时才把标准输出切到 UTF-8。
+
+    只在这台机器的默认编码确实编不出中文/装饰字符时才切 —— 中文 Windows 的 cp936
+    本来就能显示中文，强行改 UTF-8 反而会在老终端里变乱码。
+    """
+    probe = "中文 ✔ ─ •"
+    for stream in (sys.stdout, sys.stderr):
+        if stream is None or _can_encode(stream, probe):
+            continue
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:  # noqa: BLE001 - 切不了就走 _safe_write 的 ASCII 兜底
+            pass
 
 
 def _supports_color() -> bool:
@@ -48,35 +107,42 @@ def _supports_color() -> bool:
 
 
 class Console:
-    """极简控制台输出（不依赖 colorama）。"""
+    """极简控制台输出（不依赖 colorama，且在编不出中文的控制台上也不会崩）。"""
 
     def __init__(self, verbose: bool = False, quiet: bool = False) -> None:
         self.verbose = verbose
         self.quiet = quiet
-        self.color = _supports_color()
+        self.ascii_only = not _can_encode(sys.stdout, "中文 ✔ ─")
+        self.color = _supports_color() and not self.ascii_only
+
+    def _mark(self, level: str) -> str:
+        unicode_mark, _color, ascii_mark = LEVEL_MARK.get(level, ("•", "0", "-"))
+        return ascii_mark if self.ascii_only else unicode_mark
 
     def __call__(self, message: str, level: str = "info") -> None:
         if level == "debug" and not self.verbose:
             return
         if self.quiet and level in ("info", "debug"):
             return
-        mark, code = LEVEL_MARK.get(level, ("•", "0"))
+        if self.ascii_only:
+            message = message.translate(ASCII_TRANSLATION)
+        mark = self._mark(level)
         if self.color:
-            print("  \033[{}m{}\033[0m {}".format(code, mark, message))
+            color = LEVEL_MARK.get(level, ("", "0", ""))[1]
+            _safe_write(sys.stdout, "  \033[{}m{}\033[0m {}\n".format(color, mark, message))
         else:
-            print("  {} {}".format(mark, message))
+            _safe_write(sys.stdout, "  {} {}\n".format(mark, message))
 
     def raw(self, text: str = "") -> None:
         if not self.quiet:
-            print(text)
+            _safe_write(sys.stdout, text + "\n")
 
     def banner(self, text: str) -> None:
         if self.quiet:
             return
-        line = "─" * max(8, min(60, len(text) + 4))
-        print("\n" + line)
-        print("  " + text)
-        print(line)
+        char = "-" if self.ascii_only else "─"
+        line = char * max(8, min(60, len(text) + 4))
+        _safe_write(sys.stdout, "\n" + line + "\n  " + text + "\n" + line + "\n")
 
 
 # -------------------------------------------------------------------- 通用
@@ -122,7 +188,11 @@ def cmd_status(args) -> int:
     console("密码：{}".format(cfg.masked()), "info")
     console("配置：{}".format(cfg.path or default_config_path()), "info")
     console("自启：{}".format(autostart.status().splitlines()[0]), "info")
-    return 0 if status.online else 1
+    # status 是「报告状态」，未联网是正常信息，不该算命令失败；
+    # 需要脚本判断时用 --check。
+    if getattr(args, "check", False):
+        return 0 if status.online else 1
+    return 0
 
 
 def cmd_detect(args) -> int:
@@ -346,7 +416,9 @@ def build_parser() -> argparse.ArgumentParser:
     p_watch.add_argument("--provider", help="强制使用某个认证方式")
     p_watch.add_argument("-q", "--quiet", action="store_true", help="静默（用于开机自启）")
 
-    add("status", "查看联网状态", cmd_status)
+    p_status = add("status", "查看联网状态", cmd_status)
+    p_status.add_argument("--check", action="store_true",
+                          help="未联网时以非零退出码返回，方便写进脚本")
     add("providers", "列出支持的认证系统", cmd_providers)
 
     p_auto = add("autostart", "管理开机自启", cmd_autostart)
@@ -358,6 +430,9 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Optional[List[str]] = None) -> int:
+    # 必须在解析参数之前调用：argparse 的 help 文本里也有中文，
+    # 否则在编不出中文的控制台上 --help 就会崩。
+    ensure_output_encoding()
     parser = build_parser()
     args = parser.parse_args(argv)
     if not getattr(args, "func", None):

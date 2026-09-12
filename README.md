@@ -58,7 +58,7 @@ campusnet autostart install   # 3. 装成开机自启
 | `detect` | 探测门户并做指纹识别 |
 | `login` | 登录一次（已联网则跳过，`--force` 强制重登） |
 | `watch` | 常驻守护，定时检查并自动补登录 |
-| `status` | 查看联网状态与本机信息 |
+| `status` | 查看联网状态与本机信息（加 `--check` 则未联网时返回非零，方便写进脚本） |
 | `providers` | 列出支持的认证系统 |
 | `autostart install\|uninstall\|status` | 管理开机自启 |
 

@@ -38,6 +38,17 @@ jobs:
           python -m campusnet providers
           python -m campusnet status
 
+      - name: CLI smoke test (英文字符集控制台)
+        # 回归锁定：GitHub 的 Windows runner 控制台是 cp1252，编不出中文和 ✔ ─ 这类字符。
+        # 这里在三个平台上都强制一次，防止再出现「只在 Windows 上炸」的问题。
+        env:
+          PYTHONIOENCODING: cp1252
+        run: |
+          python -m campusnet --version
+          python -m campusnet providers
+          python -m campusnet status
+          python -m campusnet autostart status
+
   lint:
     name: lint
     runs-on: ubuntu-latest

@@ -27,6 +27,16 @@
 - **守护模式**：常驻轮询，联网正常时完全不产生日志
 - **凭据管理**：环境变量 / `keyring` / 配置文件 / 交互输入四级优先级，默认不落盘
 
+### 修复
+
+- **在默认编码非 UTF-8 的控制台上会崩溃**（英文版 Windows、CI runner）。
+  输出里的中文和 `─` `✔` 这类字符编不出来时会抛 `UnicodeEncodeError`，
+  导致 `campusnet providers` / `status` 等命令直接以退出码 1 结束。
+  现在：需要时自动切到 UTF-8，切不了就降级成 ASCII 字符，绝不崩。
+- CI 增加 `PYTHONIOENCODING=cp1252` 的冒烟步骤，在三个平台上锁定这个回归
+- `campusnet status` 不再因为"未联网"返回非零退出码（报告状态不是错误）；
+  需要脚本判断的用新增的 `status --check`
+
 ### 实测
 
 - 在 **江苏海洋大学** 真实门户上验证通过：自动识别出 `Server: DrcomServer1.0`，

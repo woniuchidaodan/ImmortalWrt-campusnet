@@ -30,13 +30,13 @@ $ campusnet status
 ## 安装
 
 ```bash
-pip install git+https://github.com/<you>/campusnet.git
+pip install git+https://github.com/demo133/campusnet.git
 ```
 
 或克隆后直接用，无需安装：
 
 ```bash
-git clone https://github.com/<you>/campusnet.git
+git clone https://github.com/demo133/campusnet.git
 cd campusnet && python -m campusnet status
 ```
 

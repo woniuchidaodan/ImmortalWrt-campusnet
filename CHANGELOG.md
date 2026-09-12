@@ -38,5 +38,5 @@
   （请求参数拼装与响应解析），**尚未在真实服务器上验证**，欢迎反馈
 - Python 3.8+，无第三方依赖
 
-[Unreleased]: https://github.com/<you>/campusnet/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/<you>/campusnet/releases/tag/v0.1.0
+[Unreleased]: https://github.com/demo133/campusnet/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/demo133/campusnet/releases/tag/v0.1.0

@@ -7,6 +7,9 @@ PKG_RELEASE:=1
 PKG_LICENSE:=MIT
 PKG_MAINTAINER:=demo133
 
+# 关键：声明需要 luci-base 的 host 工具（其中包含 po2lmo）
+PKG_BUILD_DEPENDS:=luci-base/host
+
 include $(INCLUDE_DIR)/package.mk
 
 define Package/luci-i18n-campusnet-zh-cn

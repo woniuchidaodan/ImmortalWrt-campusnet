@@ -17,35 +17,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Fix Makefile tabs
-        run: |
-          python3 << 'PYEOF'
-          import re
-
-          path = 'package/campusnet/Makefile'
-          with open(path, 'r') as f:
-              content = f.read()
-
-          def fix_block(text, block_name):
-              pattern = r'(define ' + re.escape(block_name) + r'\n)(.*?)(\nendef)'
-              def repl(m):
-                  body = m.group(2)
-                  new_body = '\n'.join(
-                      '\t' + line.lstrip(' \t') if line.strip() else line
-                      for line in body.split('\n')
-                  )
-                  return m.group(1) + new_body + m.group(3)
-              return re.sub(pattern, repl, text, flags=re.DOTALL)
-
-          content = fix_block(content, 'Build/Compile')
-          content = fix_block(content, 'Package/campusnet/install')
-
-          with open(path, 'w') as f:
-              f.write(content)
-          print("Makefile tabs fixed")
-          PYEOF
-          grep -P '^\t' package/campusnet/Makefile || echo "WARNING: no tabs"
-
       - name: Resolve SDK URL (24.10.0 for max compatibility)
         id: sdk
         run: |
@@ -71,7 +42,7 @@ jobs:
         uses: immortalwrt/gh-action-sdk@v8
         env:
           ARCH: aarch64_cortex-a53
-          PACKAGES: campusnet luci-app-campusnet luci-i18n-campusnet-zh-cn
+          PACKAGES: campusnet luci-app-campusnet
           V: s
           SDK_URL: ${{ steps.sdk.outputs.url }}
 
@@ -80,6 +51,10 @@ jobs:
         with:
           name: campusnet-aarch64_cortex-a53-compat-24.10.x
           path: |
+            bin/packages/aarch64_cortex-a53/base/*.apk
+            bin/packages/aarch64_cortex-a53/action/*.apk
+            bin/packages/aarch64_cortex-a53/luci/*.apk
             bin/packages/aarch64_cortex-a53/base/*.ipk
+            bin/packages/aarch64_cortex-a53/action/*.ipk
             bin/packages/aarch64_cortex-a53/luci/*.ipk
           if-no-files-found: error

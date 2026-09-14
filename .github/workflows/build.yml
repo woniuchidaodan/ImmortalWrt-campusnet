@@ -1,4 +1,4 @@
-name: Build campusnet IPK
+name: Build campusnet IPK (single package for all 24.10.x)
 
 on:
   workflow_dispatch:        # 允许手动触发
@@ -8,20 +8,8 @@ on:
 
 jobs:
   build:
-    name: Build ${{ matrix.arch }} / SDK ${{ matrix.sdk_version }}
+    name: Build single IPK compatible with all 24.10.x
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false      # 一个版本失败不影响其他版本
-      matrix:
-        include:
-          # 24.10 系列起点，兼容 24.10.0 至 24.10.5
-          - arch: aarch64_cortex-a53
-            sdk_version: "24.10.0"
-            sdk_url: "https://downloads.immortalwrt.org/releases/24.10.0/targets/mediatek/filogic/immortalwrt-sdk-24.10.0-mediatek-filogic_gcc-13.3.0_musl.Linux-x86_64.tar.zst"
-          # 24.10 系列最新，兼容 24.10.6 及以后
-          - arch: aarch64_cortex-a53
-            sdk_version: "24.10.6"
-            sdk_url: "https://downloads.immortalwrt.org/releases/24.10.6/targets/mediatek/filogic/immortalwrt-sdk-24.10.6-mediatek-filogic_gcc-13.3.0_musl.Linux-x86_64.tar.zst"
 
     steps:
       - name: Checkout
@@ -29,19 +17,44 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Build package (SDK ${{ matrix.sdk_version }})
+      - name: Resolve SDK URL (24.10.0 for max compatibility)
+        id: sdk
+        run: |
+          # 使用 24.10 系列最早版本 SDK
+          # 它的依赖要求最低，编译出的 IPK 可向上兼容整个 24.10 系列
+          VERSION="24.10.0"
+          ARCH_DIR="mediatek/filogic"
+
+          SDK_URL="https://downloads.immortalwrt.org/releases/$VERSION/targets/$ARCH_DIR/"
+          SDK_FILE=$(curl -sL "$SDK_URL" \
+            | grep -oE 'immortalwrt-sdk-'"$VERSION"'-mediatek-filogic_[^"]*\.tar\.zst' \
+            | head -1)
+
+          if [ -z "$SDK_FILE" ]; then
+            echo "错误：未找到 $VERSION 的 SDK 文件"
+            echo "目录内容预览："
+            curl -sL "$SDK_URL" | grep -oE 'immortalwrt-sdk-[^"]*\.tar\.zst' | head
+            exit 1
+          fi
+
+          FULL_URL="${SDK_URL}${SDK_FILE}"
+          echo "使用 SDK: $FULL_URL"
+          echo "url=$FULL_URL" >> $GITHUB_OUTPUT
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Build package
         uses: immortalwrt/gh-action-sdk@v8
         env:
-          ARCH: ${{ matrix.arch }}
+          ARCH: aarch64_cortex-a53
           PACKAGES: campusnet luci-app-campusnet luci-i18n-campusnet-zh-cn
           V: s
-          SDK_URL: ${{ matrix.sdk_url }}
+          SDK_URL: ${{ steps.sdk.outputs.url }}
 
       - name: Upload IPK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: campusnet-${{ matrix.arch }}-sdk${{ matrix.sdk_version }}-ipk
+          name: campusnet-aarch64_cortex-a53-compat-24.10.x
           path: |
-            bin/packages/${{ matrix.arch }}/base/*.ipk
-            bin/packages/${{ matrix.arch }}/luci/*.ipk
+            bin/packages/aarch64_cortex-a53/base/*.ipk
+            bin/packages/aarch64_cortex-a53/luci/*.ipk
           if-no-files-found: error

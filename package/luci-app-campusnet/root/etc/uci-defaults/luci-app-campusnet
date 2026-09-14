@@ -1,0 +1,13 @@
+#!/bin/sh
+
+uci -q batch <<-EOF
+	set campusnet.config=config
+	set campusnet.config.username=''
+	set campusnet.config.wifi_ssid=''
+	set campusnet.config.carrier='campus'
+	set campusnet.config.interval='5'
+	set campusnet.config.enabled='0'
+	commit campusnet
+EOF
+
+exit 0

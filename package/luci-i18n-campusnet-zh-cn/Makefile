@@ -1,7 +1,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=luci-i18n-campusnet-zh-cn
-PKG_VERSION:=1.0.0
+PKG_VERSION:=0.1.0
 PKG_RELEASE:=1
 
 PKG_LICENSE:=MIT
@@ -24,18 +24,16 @@ endef
 
 define Build/Prepare
 	mkdir -p $(PKG_BUILD_DIR)
-	$(CP) ./po $(PKG_BUILD_DIR)/
 endef
 
 define Build/Compile
-	$(STAGING_DIR_HOST)/bin/po2lmo \
-		$(PKG_BUILD_DIR)/po/zh_Hans/campusnet.po \
-		$(PKG_BUILD_DIR)/campusnet.zh-cn.lmo
+	@echo "Translation package - nothing to compile"
 endef
 
 define Package/luci-i18n-campusnet-zh-cn/install
 	$(INSTALL_DIR) $(1)/usr/lib/lua/luci/i18n
-	$(INSTALL_DATA) $(PKG_BUILD_DIR)/campusnet.zh-cn.lmo \
+	$(STAGING_DIR_HOST)/bin/po2lmo \
+		$(CURDIR)/po/zh_Hans/campusnet.po \
 		$(1)/usr/lib/lua/luci/i18n/campusnet.zh-cn.lmo
 endef
 

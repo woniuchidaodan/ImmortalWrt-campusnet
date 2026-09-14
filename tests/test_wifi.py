@@ -299,11 +299,13 @@ class TestAutoconnect:
 
     def test_rewrites_connection_mode(self, monkeypatch, tmp_path):
         """真改 XML 的那条路径：导出 → 替换 connectionMode → 写回。"""
+        workdir = tmp_path / "wifi-export"
+        workdir.mkdir()
         xml = (
             '<?xml version="1.0"?>\n<WLANProfile>\n  <name>热点A</name>\n'
             "  <connectionMode>auto</connectionMode>\n</WLANProfile>\n"
         )
-        (tmp_path / "热点A.xml").write_text(xml, encoding="utf-8")
+        (workdir / "热点A.xml").write_text(xml, encoding="utf-8")
 
         commands = []
 
@@ -318,14 +320,14 @@ class TestAutoconnect:
         monkeypatch.setattr(wifi.platform, "system", lambda: "Windows")
         monkeypatch.setattr(wifi, "_run", fake_run)
         monkeypatch.setattr(wifi.tempfile, "mkdtemp",
-                            lambda prefix="", **kw: str(tmp_path))
+                            lambda prefix="", **kw: str(workdir))
         # 生产代码在 finally 里会清掉临时目录，测试里必须挡掉，
         # 否则断言时文件已经被删了
         monkeypatch.setattr(wifi.shutil, "rmtree", lambda *a, **k: None)
 
         assert wifi.set_autoconnect("热点A", enabled=False) is True
 
-        written = (tmp_path / "热点A.xml").read_text(encoding="utf-8")
+        written = (workdir / "热点A.xml").read_text(encoding="utf-8")
         assert "<connectionMode>manual</connectionMode>" in written
         assert any("add" in c for c in commands)
 

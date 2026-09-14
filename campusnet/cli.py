@@ -317,8 +317,10 @@ def cmd_wifi(args) -> int:
         console.banner("附近的 Wi-Fi")
         found = wifi.scan()
         if not found:
+            # 扫不到不等于命令失败：CI/服务器的机器本来就没有无线网卡。
+            # 返回非零会让 `run: |` 里的脚本步骤整体变红，所以这里是 0。
             console("扫描不到网络（可能没开无线网卡，或命令不可用）", "warn")
-            return 1
+            return 0
         for item in found:
             mark = "ok" if target and item.ssid == target else "info"
             suffix = "  ← 校园网" if target and item.ssid == target else ""
@@ -344,10 +346,12 @@ def cmd_wifi(args) -> int:
         console.raw()
         changed = wifi.forget_other_networks(target, logger=lambda m, lv="info": console(m, lv))
         if not changed:
+            # 同上：这台机器根本没有无线网卡时不该算失败。
+            # 只有「平台支持却一个都没改成」才值得报警告。
             console("没有改动任何设置（可能不支持，或本来就都对）", "warn")
-            return 1 if not wifi.supported() else 0
+            return 0
         console.raw()
-        console("完成。想恢复某个网络，用：campusnet wifi autoconnect --restore <名称>", "info")
+        console("完成。想恢复某个网络，用：campusnet wifi restore <名称>", "info")
         return 0
 
     # 默认：诊断报告

@@ -17,6 +17,19 @@ PKG_LICENSE:=MIT
 PKG_LICENSE_FILES:=LICENSE
 PKG_MAINTAINER:=demo133
 
+PKG_BUILD_DEPENDS:= \
+	python3/host \
+	python-build/host \
+	python-installer/host \
+	python-wheel/host \
+	python-setuptools/host \
+	python-flit-core/host \
+	python-hatchling/host \
+	python-poetry-core/host \
+	python-packaging/host \
+	python-pyproject-hooks/host \
+	python-pip/host
+
 include $(INCLUDE_DIR)/package.mk
 include $(TOPDIR)/feeds/packages/lang/python/python3-package.mk
 
@@ -35,15 +48,6 @@ define Package/campusnet/description
   Works on OpenWrt with procd + cron.
 endef
 
-define Build/Compile
-	$(call Build/Compile/Py3Mod,., \
-		install --prefix="/usr" --root="$(PKG_INSTALL_DIR)" \
-	)
-endef
-
-define Package/campusnet/install
-	$(INSTALL_DIR) $(1)/usr/bin
-	$(INSTALL_BIN) $(PKG_INSTALL_DIR)/usr/bin/campusnet $(1)/usr/bin/
-endef
-
+$(eval $(call Py3Package,campusnet))
 $(eval $(call BuildPackage,campusnet))
+$(eval $(call BuildPackage,campusnet-src))

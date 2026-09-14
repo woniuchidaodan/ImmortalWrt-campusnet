@@ -1,15 +1,27 @@
 name: Build campusnet IPK
 
 on:
-  workflow_dispatch:        # 允许在 GitHub 网页上手动触发
+  workflow_dispatch:        # 允许手动触发
   push:
     tags:
       - 'v*'                # 推送 v* 标签时自动触发
 
 jobs:
   build:
-    name: Build for aarch64_cortex-a53
+    name: Build ${{ matrix.arch }} / SDK ${{ matrix.sdk_version }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false      # 一个版本失败不影响其他版本
+      matrix:
+        include:
+          # 24.10 系列起点，兼容 24.10.0 至 24.10.5
+          - arch: aarch64_cortex-a53
+            sdk_version: "24.10.0"
+            sdk_url: "https://downloads.immortalwrt.org/releases/24.10.0/targets/mediatek/filogic/immortalwrt-sdk-24.10.0-mediatek-filogic_gcc-13.3.0_musl.Linux-x86_64.tar.zst"
+          # 24.10 系列最新，兼容 24.10.6 及以后
+          - arch: aarch64_cortex-a53
+            sdk_version: "24.10.6"
+            sdk_url: "https://downloads.immortalwrt.org/releases/24.10.6/targets/mediatek/filogic/immortalwrt-sdk-24.10.6-mediatek-filogic_gcc-13.3.0_musl.Linux-x86_64.tar.zst"
 
     steps:
       - name: Checkout
@@ -17,18 +29,19 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Build package
+      - name: Build package (SDK ${{ matrix.sdk_version }})
         uses: immortalwrt/gh-action-sdk@v8
         env:
-          ARCH: aarch64_cortex-a53   # WR30U / mediatek-filogic 的包架构
-          PACKAGES: campusnet luci-app-campusnet   # 同时编译两个包
-          V: s                       # 详细日志
+          ARCH: ${{ matrix.arch }}
+          PACKAGES: campusnet luci-app-campusnet luci-i18n-campusnet-zh-cn
+          V: s
+          SDK_URL: ${{ matrix.sdk_url }}
 
       - name: Upload IPK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: campusnet-aarch64_cortex-a53-ipk
+          name: campusnet-${{ matrix.arch }}-sdk${{ matrix.sdk_version }}-ipk
           path: |
-            bin/packages/aarch64_cortex-a53/base/*.ipk
-            bin/packages/aarch64_cortex-a53/luci/*.ipk
+            bin/packages/${{ matrix.arch }}/base/*.ipk
+            bin/packages/${{ matrix.arch }}/luci/*.ipk
           if-no-files-found: error

@@ -15,18 +15,20 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0     # 获取完整历史，某些构建步骤需要
+          fetch-depth: 0
 
       - name: Build package
         uses: immortalwrt/gh-action-sdk@v8
         env:
           ARCH: aarch64_cortex-a53   # WR30U / mediatek-filogic 的包架构
-          PACKAGES: campusnet        # 只编译 campusnet，不编译整个 feed
-          V: s                       # 详细日志，便于排查问题
+          PACKAGES: campusnet luci-app-campusnet   # 同时编译两个包
+          V: s                       # 详细日志
 
       - name: Upload IPK artifact
         uses: actions/upload-artifact@v4
         with:
           name: campusnet-aarch64_cortex-a53-ipk
-          path: bin/packages/aarch64_cortex-a53/base/*.ipk
-          if-no-files-found: error   # 没找到 .ipk 就报错，方便发现问题
+          path: |
+            bin/packages/aarch64_cortex-a53/base/*.ipk
+            bin/packages/aarch64_cortex-a53/luci/*.ipk
+          if-no-files-found: error

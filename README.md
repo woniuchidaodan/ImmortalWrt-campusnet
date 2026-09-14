@@ -21,6 +21,7 @@ $ campusnet status
 ## 特性
 
 - **自动识别认证系统** —— 探测门户页面做指纹识别，不用你告诉它学校用的哪家
+- **换过 Wi-Fi 也能自己连回来** —— 手动切到手机热点后重启，会自动切回校园网
 - **零第三方依赖** —— 只用 Python 标准库，宿舍内网也装得上
 - **开机自启** —— Windows 注册表 / macOS LaunchAgent / Linux systemd，无需管理员权限
 - **守护模式** —— 定时检查，夜间断网、早上恢复后自动重新认证
@@ -50,6 +51,55 @@ campusnet login               # 2. 登录一次试试
 campusnet autostart install   # 3. 装成开机自启
 ```
 
+> **第 1 步里问的「校园 Wi-Fi 名称」一定要填。** 它修的是下面这个问题。
+
+## 换过 Wi-Fi 之后开机连不回校园网？
+
+这是校园网自动登录最常见的翻车点，因为它的成因有点反直觉：
+
+1. 你把 Wi-Fi 从校园网手动换成手机热点（或者别人的热点）；
+2. 关机再开机，系统发现热点也有「自动连接」，就先连上热点了；
+3. 热点能上网 → 联网探测通过 → 自动登录逻辑认为「已联网，无需认证」，
+   于是**根本不会去碰 Wi-Fi**。
+
+结果就是一直挂在热点上，校园网永远连不上 —— 明明有网，却不是你要的那个网。
+
+**关键在于判断依据**：不能问「有没有网」，而要问「连的是不是校园网」。
+所以 `campusnet` 在联网探测**之前**会先确认 Wi-Fi：
+
+```bash
+campusnet wifi set JOU          # 记住校园网名称（填你自己的 SSID）
+campusnet wifi autoconnect      # 关闭其它网络自动连接（治本）
+campusnet wifi                  # 看当前 Wi-Fi 状态
+```
+
+三条命令各自的作用：
+
+| 命令 | 作用 | 是否必须 |
+| --- | --- | --- |
+| `wifi set <名称>` | 记下校园网 SSID，之后登录前会检查 | **必须**，不填就没有切网功能 |
+| `wifi autoconnect` | 把其它所有 Wi-Fi 改成「手动连接」，开机时系统就没得抢 | 强烈建议 |
+| `wifi` | 诊断：当前连的哪个网、是否在目标上、保存了哪些网络 | 排查用 |
+
+只做第一步也能修好：每次登录前如果发现连的不是校园网，会执行
+`netsh wlan connect` 并等它真的连上（最多 30 秒）再走认证流程。
+第二步是**治本** —— 让开机时压根不会去连别的网。
+
+配置好之后的行为：
+
+```console
+$ campusnet login
+! 当前 Wi-Fi 是「iPhone 热点」，需要切回校园网「JOU」…
+✔ 已连接到 Wi-Fi「JOU」
+✔ 认证成功，网络已连通
+```
+
+再也不用先手动切回校园网了。`watch` 守护模式每一轮也会做这个检查，
+所以用着用着 Wi-Fi 被切走，下一个周期就会被拉回来。
+
+> macOS 没有「关闭单个网络自动加入」的接口，`wifi autoconnect` 是空操作；
+> 但 `wifi set` + 登录前自动切网在三个平台上都有效。
+
 ## 命令
 
 | 命令 | 作用 |
@@ -58,12 +108,13 @@ campusnet autostart install   # 3. 装成开机自启
 | `detect` | 探测门户并做指纹识别 |
 | `login` | 登录一次（已联网则跳过，`--force` 强制重登） |
 | `watch` | 常驻守护，定时检查并自动补登录 |
+| `wifi [status\|list\|connect\|autoconnect\|set\|restore]` | 查看/管理 Wi-Fi，解决换网后连不回校园网 |
 | `status` | 查看联网状态与本机信息（加 `--check` 则未联网时返回非零，方便写进脚本） |
 | `providers` | 列出支持的认证系统 |
 | `autostart install\|uninstall\|status` | 管理开机自启 |
 
 常用参数：`--config` 指定配置 · `--provider` 强制认证方式 · `--portal` 指定门户 ·
-`--interval` 守护间隔 · `--verbose` 打印请求细节
+`--interval` 守护间隔 · `--wifi` 临时指定校园网 · `--verbose` 打印请求细节
 
 ## 支持的认证系统
 
@@ -86,6 +137,16 @@ campusnet autostart install   # 3. 装成开机自启
 | Windows | `%APPDATA%\campusnet\config.json` |
 | macOS / Linux | `~/.config/campusnet/config.json` |
 
+主要字段：
+
+| 字段 | 说明 |
+| --- | --- |
+| `username` | 学号 / 上网账号 |
+| `portal_ip` | 认证门户地址，探测到后会自动写入 |
+| `wifi_ssid` | **校园 Wi-Fi 名称**，填了才会自动切网（见上文） |
+| `provider` | 认证系统，默认 `auto` 自动识别 |
+| `timeout` | 单次请求超时（秒） |
+
 也可以用环境变量，适合不落盘：
 
 ```bash
@@ -103,6 +164,10 @@ export CAMPUSNET_PASSWORD=你的密码
 
 **认不出我们学校怎么办？**
 跑 `detect`，把输出（**记得给账号、IP、MAC 打码**）发到 issue，通常加一条指纹规则就能支持。
+
+**开机后连到别的 Wi-Fi 就不回校园网了？**
+填上 `wifi_ssid`（`campusnet wifi set 你的SSID`）。原因和原理见上文
+[「换过 Wi-Fi 之后开机连不回校园网」](#换过-wi-fi-之后开机连不回校园网)。
 
 **为什么零依赖、不模拟浏览器？**
 能直连接口就绝不模拟浏览器——快、稳、日志清晰、不用下载 Chromium。标准库够用，就不引第三方包。

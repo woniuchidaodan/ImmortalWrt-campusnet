@@ -10,6 +10,7 @@ from .config import Config
 from .detector import Detection, NetStatus, check_online, detect, portal_candidates, provider_order
 from .providers import LoginResult, get_provider
 from .session import Session, local_ip, local_mac
+from .wifi import WifiResult, ensure_wifi
 
 LEVELS = ("debug", "info", "ok", "warn", "error")
 
@@ -36,6 +37,8 @@ class Runner:
         self.cfg = cfg
         self.log = logger or _null_log
         self._session: Optional[Session] = None
+        #: 等 Wi-Fi 关联的超时（秒）。命令行可覆盖。
+        self.wifi_timeout: float = float(cfg.options.get("wifi_timeout", 30))
 
     # ------------------------------------------------------------ 资源
     @property
@@ -67,9 +70,34 @@ class Runner:
             self.log("未能识别门户类型，将按通用顺序尝试", "warn")
         return detection
 
+    # ------------------------------------------------------------ Wi-Fi
+    def ensure_wifi(self) -> WifiResult:
+        """把 Wi-Fi 抢回校园网。
+
+        **必须在联网探测之前做。** 反过来就会出现这个 bug：
+
+        连着手机热点 → 热点能上网 → 探测说「已联网」→ 直接返回，Wi-Fi 永远不切。
+
+        所以这里的判断依据是「当前连的是不是校园网」，而不是「有没有网」。
+        只有配置了 ``wifi_ssid`` 才会动手；没配就完全不影响原有行为。
+        """
+        result = ensure_wifi(self.cfg.wifi_ssid, timeout=self.wifi_timeout, logger=self.log)
+        if not result.supported:
+            self.log(result.message, "debug")
+            return result
+        if result.changed and result.ok:
+            # 刚换了 Wi-Fi，DHCP 还没走完，给它一点时间再探测
+            delay = float(self.cfg.options.get("wifi_settle_delay", 3))
+            if delay:
+                time.sleep(delay)
+        return result
+
     # ------------------------------------------------------------ 主流程
     def ensure_online(self, force: bool = False, limit: int = 3) -> RunResult:
         cfg = self.cfg
+
+        # 先抢 Wi-Fi，再判联网 —— 顺序不能反，理由见 ensure_wifi 的注释。
+        self.ensure_wifi()
 
         status = self.status()
         if status.online and not force:
@@ -144,8 +172,13 @@ class Runner:
     def watch(self, interval_minutes: int = 10, on_event: Optional[Callable[[RunResult], None]] = None):
         """常驻守护：联网正常时完全安静，断了就补登录。"""
         self.log("守护模式启动，每 {} 分钟检查一次".format(interval_minutes), "ok")
+        if self.cfg.wifi_ssid:
+            self.log("已配置校园 Wi-Fi「{}」，每轮都会确认是否连在它上面".format(self.cfg.wifi_ssid), "info")
         while True:
             try:
+                # 每轮都先确认 Wi-Fi。用户随时可能手动切走，
+                # 而切走之后「有网」反倒会掩盖问题。
+                wifi = self.ensure_wifi()
                 status = self.status()
                 if not status.online:
                     self.log("检测到网络未认证，开始自动登录…", "warn")
@@ -153,6 +186,8 @@ class Runner:
                     if on_event:
                         on_event(result)
                     self.log(result.message, "ok" if result.ok else "error")
+                elif wifi.changed:
+                    self.log("已切回校园 Wi-Fi，网络正常", "ok")
             except KeyboardInterrupt:
                 self.log("收到中断，退出守护模式", "info")
                 return

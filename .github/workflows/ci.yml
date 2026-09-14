@@ -37,6 +37,8 @@ jobs:
           python -m campusnet --version
           python -m campusnet providers
           python -m campusnet status
+          python -m campusnet wifi
+          python -m campusnet wifi list
 
       - name: CLI smoke test (英文字符集控制台)
         # 回归锁定：GitHub 的 Windows runner 控制台是 cp1252，编不出中文和 ✔ ─ 这类字符。
@@ -48,6 +50,12 @@ jobs:
           python -m campusnet providers
           python -m campusnet status
           python -m campusnet autostart status
+          python -m campusnet wifi
+          python -m campusnet wifi --help
+
+      - name: Wi-Fi 逻辑回归（不依赖真实网卡）
+        # 这条守住那个 bug：必须先切 Wi-Fi 再判联网。顺序反了测试就会红。
+        run: pytest -q tests/test_wifi.py
 
   lint:
     name: lint

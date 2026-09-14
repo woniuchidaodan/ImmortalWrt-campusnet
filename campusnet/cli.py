@@ -20,6 +20,7 @@ from .providers import PROVIDERS, fingerprint
 from .detector import DetectContext
 from .runner import Runner
 from .session import Session, local_ip, local_mac
+from . import wifi
 
 # -------------------------------------------------------------------- 输出
 #: 日志级别 → (Unicode 标记, 颜色码, ASCII 降级标记)
@@ -186,6 +187,19 @@ def cmd_status(args) -> int:
     console("本机 MAC：{}".format(local_mac() or "未知"), "info")
     console("账号：{}".format(cfg.username or "（未配置）"), "info")
     console("密码：{}".format(cfg.masked()), "info")
+
+    # Wi-Fi 是最容易出问题的一环，状态里必须能看到
+    if cfg.wifi_ssid:
+        now = wifi.current_ssid()
+        on_target = now == cfg.wifi_ssid
+        console("校园 Wi-Fi：{}（当前 {}{}）".format(
+            cfg.wifi_ssid,
+            now or "未连接",
+            "" if on_target else " ← 不一致，登录时会自动切回",
+        ), "ok" if on_target else "warn")
+    else:
+        console("校园 Wi-Fi：（未配置）", "warn")
+
     console("配置：{}".format(cfg.path or default_config_path()), "info")
     console("自启：{}".format(autostart.status().splitlines()[0]), "info")
     # status 是「报告状态」，未联网是正常信息，不该算命令失败；
@@ -252,12 +266,104 @@ def cmd_login(args) -> int:
 
 def cmd_watch(args) -> int:
     runner = _make_runner(args)
+    if getattr(args, "wifi", None):
+        runner.cfg.wifi_ssid = args.wifi
     console = Console(verbose=args.verbose, quiet=getattr(args, "quiet", False))
     console.banner("campusnet 守护模式")
     try:
         runner.watch(interval_minutes=args.interval)
     except KeyboardInterrupt:
         return 0
+    return 0
+
+
+def cmd_wifi(args) -> int:
+    """查看/管理 Wi-Fi：诊断、切换、以及关闭其它网络的自动连接。"""
+    console = Console(verbose=args.verbose)
+    cfg = _load(args)
+    target = args.ssid or cfg.wifi_ssid
+
+    action = args.action
+
+    if action == "set":
+        name = (args.ssid or "").strip()
+        if not name:
+            console("用法：campusnet wifi set <校园网名称>", "error")
+            return 2
+        cfg.wifi_ssid = name
+        saved = cfg.save(cfg.path or default_config_path())
+        console.banner("已设置校园 Wi-Fi")
+        console("校园网：{}".format(name), "ok")
+        console("配置：{}".format(saved), "info")
+        console.raw()
+        console("现在 campusnet login 和守护模式都会先确认连在「{}」上。".format(name), "info")
+        console("建议再执行一次，把其它网络的自动连接关掉（治本）：", "info")
+        console("  campusnet wifi autoconnect", "info")
+        return 0
+
+    if action == "restore":
+        name = (args.ssid or "").strip()
+        if not name:
+            console("用法：campusnet wifi restore <名称>", "error")
+            return 2
+        console.banner("恢复自动连接")
+        if wifi.set_autoconnect(name, enabled=True):
+            console("已把「{}」改回自动连接".format(name), "ok")
+            return 0
+        console("没能改「{}」的设置（可能名称不对或没有权限）".format(name), "error")
+        return 1
+
+    if action == "list":
+        console.banner("附近的 Wi-Fi")
+        found = wifi.scan()
+        if not found:
+            console("扫描不到网络（可能没开无线网卡，或命令不可用）", "warn")
+            return 1
+        for item in found:
+            mark = "ok" if target and item.ssid == target else "info"
+            suffix = "  ← 校园网" if target and item.ssid == target else ""
+            console(item.ssid + suffix, mark)
+        return 0
+
+    if action == "connect":
+        if not target:
+            console("没指定 Wi-Fi 名称。用 campusnet wifi connect <名称>，或先写进配置。", "error")
+            return 2
+        console.banner("连接 Wi-Fi")
+        result = wifi.connect(target)
+        console(result.message, "ok" if result.ok else "error")
+        return 0 if result.ok else 1
+
+    if action == "autoconnect":
+        if not target:
+            console("没指定校园 Wi-Fi 名称，无法判断该保留哪个。", "error")
+            return 2
+        console.banner("关闭其它 Wi-Fi 的自动连接")
+        console("校园网：{}".format(target), "info")
+        console("其它网络会被改成「手动连接」——开机时系统就不会抢它们了。", "info")
+        console.raw()
+        changed = wifi.forget_other_networks(target, logger=lambda m, lv="info": console(m, lv))
+        if not changed:
+            console("没有改动任何设置（可能不支持，或本来就都对）", "warn")
+            return 1 if not wifi.supported() else 0
+        console.raw()
+        console("完成。想恢复某个网络，用：campusnet wifi autoconnect --restore <名称>", "info")
+        return 0
+
+    # 默认：诊断报告
+    console.banner("Wi-Fi 状态")
+    report = wifi.probe_report(target)
+    for line in report.splitlines():
+        console(line, "info")
+
+    if not cfg.wifi_ssid:
+        console.raw()
+        console("提示：配置里没写 Wi-Fi 名称，所以不会自动切换网络。", "warn")
+        console("加上它就能解决「开机连到别的 WiFi 后不回校园网」的问题：", "info")
+        console("  campusnet wifi set JOU", "info")
+    elif target and wifi.current_ssid() != target:
+        console.raw()
+        console("现在没连在校园网上，执行 campusnet login 会自动切回去。", "warn")
     return 0
 
 
@@ -342,13 +448,24 @@ def cmd_setup(args) -> int:
     else:
         console("没探测到门户，稍后可手动填 portal_ip", "warn")
 
-    # 4) Wi-Fi 名称（可选）
+    # 4) Wi-Fi 名称（可选，但强烈建议填）
+    console.raw()
+    console("校园 Wi-Fi 名称可以解决「开机连到别的网络就不回校园网」的问题。", "info")
+    detected = wifi.current_ssid()
+    if detected:
+        console("当前连的是：{}".format(detected), "debug")
+    hint = " [{}]".format(cfg.wifi_ssid) if cfg.wifi_ssid else ""
     try:
-        ssid = input("  Wi-Fi 名称（可留空）：").strip()
+        ssid = input("  校园 Wi-Fi 名称（留空跳过）{}：".format(hint)).strip()
     except EOFError:
         ssid = ""
+    if not ssid and cfg.wifi_ssid:
+        ssid = cfg.wifi_ssid
     if ssid:
         cfg.wifi_ssid = ssid
+        console("已记住校园网：{}".format(ssid), "ok")
+    else:
+        console("没填 —— 宿主机换过 Wi-Fi 后可能连不回校园网", "warn")
 
     cfg.path = path
     saved = cfg.save(path)
@@ -414,7 +531,15 @@ def build_parser() -> argparse.ArgumentParser:
     p_watch = add("watch", "常驻守护，定时检查并自动补登录", cmd_watch)
     p_watch.add_argument("--interval", type=int, default=10, help="检查间隔（分钟，默认 10）")
     p_watch.add_argument("--provider", help="强制使用某个认证方式")
+    p_watch.add_argument("--wifi", help="校园 Wi-Fi 名称（覆盖配置；填了就会自动切网）")
     p_watch.add_argument("-q", "--quiet", action="store_true", help="静默（用于开机自启）")
+
+    p_wifi = add("wifi", "查看/管理 Wi-Fi（诊断、切换、关闭其它网络自动连接）", cmd_wifi)
+    p_wifi.add_argument("action", nargs="?", default="status",
+                        choices=["status", "list", "connect", "autoconnect", "set", "restore"],
+                        help="status 诊断 / list 扫描 / connect 连接 / "
+                             "autoconnect 关闭其它自动连接 / set 记住校园网 / restore 恢复")
+    p_wifi.add_argument("ssid", nargs="?", default="", help="Wi-Fi 名称")
 
     p_status = add("status", "查看联网状态", cmd_status)
     p_status.add_argument("--check", action="store_true",

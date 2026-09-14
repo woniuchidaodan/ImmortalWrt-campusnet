@@ -20,7 +20,7 @@ from .providers import PROVIDERS, fingerprint
 from .detector import DetectContext
 from .runner import Runner
 from .session import Session, local_ip, local_mac
-from . import wifi
+from . import carrier, wifi
 
 # -------------------------------------------------------------------- 输出
 #: 日志级别 → (Unicode 标记, 颜色码, ASCII 降级标记)
@@ -157,6 +157,8 @@ def _load(args) -> Config:
         cfg.portal_ip = args.portal
     if getattr(args, "timeout", None):
         cfg.timeout = args.timeout
+    if getattr(args, "carrier", None):
+        cfg.options["carrier"] = carrier.normalize(args.carrier)
     return cfg
 
 
@@ -187,6 +189,13 @@ def cmd_status(args) -> int:
     console("本机 MAC：{}".format(local_mac() or "未知"), "info")
     console("账号：{}".format(cfg.username or "（未配置）"), "info")
     console("密码：{}".format(cfg.masked()), "info")
+
+    # 运营商没设对，账号密码再对也认证不上，所以状态里要能看见
+    current_carrier = str(cfg.options.get("carrier", "") or "")
+    if current_carrier:
+        console("运营商：{}".format(carrier.label(carrier.normalize(current_carrier))), "info")
+    else:
+        console("运营商：未设置（校园用户；要选运营商的话用 campusnet carrier 移动）", "info")
 
     # Wi-Fi 是最容易出问题的一环，状态里必须能看到
     if cfg.wifi_ssid:
@@ -371,6 +380,48 @@ def cmd_wifi(args) -> int:
     return 0
 
 
+def cmd_carrier(args) -> int:
+    """查看/设置运营商。
+
+    很多学校登录页上要先选「服务类型」（校园用户 / 校园电信 / 移动 / 联通 …），
+    这一步没选对，账号密码再对也认证不上。
+    """
+    console = Console()
+    cfg = _load(args)
+
+    if args.name:
+        code = carrier.normalize(args.name)
+        cfg.options["carrier"] = code
+        saved = cfg.save(cfg.path or default_config_path())
+        console.banner("运营商已设置")
+        console("运营商：{}".format(carrier.label(code)), "ok")
+        if not carrier.is_known(code):
+            console("（这是自定义值，会当作账号后缀 @{} 使用）".format(code), "warn")
+        console("配置：{}".format(saved), "info")
+        console.raw()
+        console("下一步：campusnet login 验证一下", "info")
+        return 0
+
+    console.banner("运营商设置")
+    current = str(cfg.options.get("carrier", "") or "")
+    if current:
+        code = carrier.normalize(current)
+        console("当前：{}".format(carrier.label(code)), "ok")
+    else:
+        console("当前：未设置（等同于「校园用户」）", "warn")
+        console.raw()
+        console("如果你的学校登录时要选运营商，那这一步一定要设：", "info")
+
+    console.raw()
+    console("可选值：", "info")
+    for code, text in carrier.CHOICES:
+        console("  {:<10} {}".format(code, text), "info")
+    console.raw()
+    console("用法：campusnet carrier 移动", "info")
+    console("也可以直接写自己的运营商名，会当作账号后缀处理。", "debug")
+    return 0
+
+
 def cmd_providers(args) -> int:
     console = Console()
     console.banner("支持的认证系统")
@@ -452,7 +503,37 @@ def cmd_setup(args) -> int:
     else:
         console("没探测到门户，稍后可手动填 portal_ip", "warn")
 
-    # 4) Wi-Fi 名称（可选，但强烈建议填）
+    # 4) 运营商 —— 很多学校登录时要先选「校园/移动/电信/联通」
+    console.raw()
+    console("有些学校登录时要先选运营商（页面上的「服务类型」）。", "info")
+    console("不选会影响认证，不确定就按你办宽带的那家选。", "info")
+    current = str(cfg.options.get("carrier", "") or "")
+    if current:
+        console("当前设置：{}".format(carrier.label(carrier.normalize(current))), "debug")
+    for index, (code, text) in enumerate(carrier.CHOICES, 1):
+        console("  {}. {}".format(index, text), "info")
+    console("  0. 不选 / 跳过（我们学校不用选）", "info")
+    try:
+        picked = input("  选择 [1]：").strip()
+    except EOFError:
+        picked = ""
+    if picked in ("0",):
+        cfg.options.pop("carrier", None)
+        console("已跳过运营商设置", "info")
+    else:
+        if picked.isdigit() and 1 <= int(picked) <= len(carrier.CHOICES):
+            code = carrier.CHOICES[int(picked) - 1][0]
+        elif picked:
+            # 用户直接打字输入运营商名，比如「移动」或「中国移动」
+            code = carrier.normalize(picked)
+            if not carrier.is_known(code):
+                console("没认出来，将按自定义运营商处理：{}".format(code), "warn")
+        else:
+            code = current_code if (current_code := carrier.normalize(current)) else "campus"
+        cfg.options["carrier"] = code
+        console("运营商：{}".format(carrier.label(code)), "ok")
+
+    # 5) Wi-Fi 名称（可选，但强烈建议填）
     console.raw()
     console("校园 Wi-Fi 名称可以解决「开机连到别的网络就不回校园网」的问题。", "info")
     detected = wifi.current_ssid()
@@ -531,11 +612,13 @@ def build_parser() -> argparse.ArgumentParser:
     p_login.add_argument("--provider", help="强制使用某个认证方式")
     p_login.add_argument("--portal", help="指定门户地址")
     p_login.add_argument("--username", help="临时覆盖账号")
+    p_login.add_argument("--carrier", help="运营商（如 移动 / 电信 / 联通 / 校园用户）")
 
     p_watch = add("watch", "常驻守护，定时检查并自动补登录", cmd_watch)
     p_watch.add_argument("--interval", type=int, default=10, help="检查间隔（分钟，默认 10）")
     p_watch.add_argument("--provider", help="强制使用某个认证方式")
     p_watch.add_argument("--wifi", help="校园 Wi-Fi 名称（覆盖配置；填了就会自动切网）")
+    p_watch.add_argument("--carrier", help="运营商（如 移动 / 电信 / 联通 / 校园用户）")
     p_watch.add_argument("-q", "--quiet", action="store_true", help="静默（用于开机自启）")
 
     p_wifi = add("wifi", "查看/管理 Wi-Fi（诊断、切换、关闭其它网络自动连接）", cmd_wifi)
@@ -549,6 +632,10 @@ def build_parser() -> argparse.ArgumentParser:
     p_status.add_argument("--check", action="store_true",
                           help="未联网时以非零退出码返回，方便写进脚本")
     add("providers", "列出支持的认证系统", cmd_providers)
+
+    p_carrier = add("carrier", "查看/设置运营商（登录前要选服务类型的学校用）", cmd_carrier)
+    p_carrier.add_argument("name", nargs="?", default="",
+                           help="运营商，如 移动 / 电信 / 联通 / 校园用户；留空则显示当前设置")
 
     p_auto = add("autostart", "管理开机自启", cmd_autostart)
     p_auto.add_argument("action", choices=["install", "uninstall", "status"])

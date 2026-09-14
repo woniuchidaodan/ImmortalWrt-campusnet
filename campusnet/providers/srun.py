@@ -14,6 +14,10 @@
 另外 ``password`` 字段传的是 ``{MD5}<hmd5>`` 这种带前缀的形式。
 
 ``ac_id`` 各校不同，绝大多数是 ``1``；不确定就用 ``campusnet detect`` 从页面里抠。
+
+有些学校要先选运营商，深澜用 ``domain`` 参数表达（``@cmcc`` / ``@telecom`` /
+``@unicom``）。用 ``carrier`` 选项指定即可，写法很宽松
+（``移动`` / ``中国移动`` / ``cmcc`` 都认），见 ``campusnet.carrier``。
 """
 
 from __future__ import annotations
@@ -25,6 +29,7 @@ from typing import Any, Dict, List, Optional
 from urllib.parse import quote
 
 from .base import DetectContext, LoginResult, Provider
+from .. import carrier as carrier_mod
 from ..session import local_ip
 
 #: 深澜私有的 base64 字母表（64 个字符 + 填充符）
@@ -104,6 +109,20 @@ class SrunProvider(Provider):
         n = str(self.opt("n", "200"))
         type_ = str(self.opt("type", "1"))
         os_name = str(self.opt("os", "Windows 10"))
+
+        # 运营商：深澜用 domain 参数表达（也可以是账号后缀）。
+        # 用了 domain 就不再拼后缀 —— 两者同时用会被服务端当成
+        # ``账号@cmcc@cmcc``，反而认证失败。
+        carrier_raw = str(self.opt("carrier", "") or "").strip()
+        code = carrier_mod.normalize(carrier_raw) if carrier_raw else ""
+        domain = str(self.opt("domain", "") or "").strip()
+        if not domain and code:
+            domain = carrier_mod.suffix_for(code).lstrip("@")
+        if domain and domain.startswith("@"):
+            domain = domain[1:]
+        # 账号已经自带 @xxx 就不要再加 domain
+        if domain and "@" in username:
+            domain = ""
         errors: List[str] = []
 
         for origin in self.origins(portal):
@@ -136,6 +155,8 @@ class SrunProvider(Provider):
                 os=quote(os_name, safe=""),
                 name=quote(os_name, safe=""),
             )
+            if domain:
+                query += "&domain={}".format(quote(domain, safe=""))
             try:
                 resp = self.session.get("{}/cgi-bin/srun_portal?{}".format(origin, query),
                                         headers={"Referer": origin + "/"})

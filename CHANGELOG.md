@@ -11,6 +11,11 @@
   修掉「手动切到别的 Wi-Fi 后重启，不会再连回校园网」的问题。
   新增 `wifi status|list|connect|autoconnect|set|restore` 子命令，
   以及 `wifi_ssid` 配置项和 `watch --wifi` 参数。
+- **运营商（ISP）选择支持**（`campusnet carrier`）——
+  登录前要先选「移动 / 电信 / 联通」的学校现在也能用了。
+  新增 `carrier` 子命令、`--carrier` 参数和向导第 4 步；
+  Dr.COM 走 `R1` / `R3` / `para` + 账号后缀，Srun 走 `domain` 参数。
+  新增 `campusnet.carrier` 模块做跨厂商的运营商归一化。
 
 ### 修复
 
@@ -21,6 +26,15 @@
   顺序反了这就是 bug，所以专门加了回归测试钉住它。
   分两步修：`wifi set <名称>` 让登录前自动切回（应急）；
   `wifi autoconnect` 关掉其它网络的自动连接（治本，让开机时没得抢）。
+- **运营商代号不幂等**：`normalize("campus_telecom")` 会因子串匹配
+  降级成 `telecom`，把 Dr.COM 的「校园电信」（`R1=1`）悄悄变成纯「电信」
+  （`R1=0`），认证必然失败且看不出原因。现在加了两道保护：
+  标准代号直接返回、纯 ASCII 别名要求词边界。
+- **「校园宽带(移动)」被认成「校园用户」**：子串匹配命中了更短的
+  「校园」而不是用户真正想说的「移动」。现在按别名长度从长到短匹配。
+- **`wifi` 报告类命令在无网卡的机器上返回非零**，导致 CI 全红。
+  `wifi` / `wifi status` / `wifi list` / `wifi autoconnect` 现在恒返回 0；
+  `wifi connect` 真失败时仍返回非零。
 
 ### 计划中
 

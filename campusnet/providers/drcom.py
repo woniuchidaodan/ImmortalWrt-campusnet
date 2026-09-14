@@ -14,6 +14,10 @@
 
 页面上那四个「服务类型」（校园用户 / 校园电信 / 校园联通 / 校园其他）
 通过 ``R1`` / ``R3`` / ``para`` 三个参数区分，见 ``CARRIERS``。
+
+用 ``carrier`` 选项指定要选哪个运营商，写法很宽松
+（``移动`` / ``中国移动`` / ``cmcc`` / ``中国移动(CMCC)`` 都认），
+归一化逻辑见 ``campusnet.carrier``。
 """
 
 from __future__ import annotations
@@ -24,6 +28,7 @@ from typing import Dict, List, Optional, Tuple
 from urllib.parse import quote
 
 from .base import DetectContext, LoginResult, Provider
+from .. import carrier as carrier_mod
 from ..session import local_ip, local_mac
 
 #: 经典 ACSetting 接口的返回格式：``Msg=01;time=0;msga='无法获取用户认证账号！'``
@@ -38,6 +43,21 @@ CARRIERS: Dict[str, Tuple[str, str, str, str]] = {
     "移动": ("0", "0", "30", "@cmcc"),
     "电信": ("0", "0", "00", "@telecom"),
     "联通": ("0", "0", "00", "@unicom"),
+}
+
+#: 归一化代号 → 上面那个表的键。
+#:
+#: 注意 Dr.COM 页面上写的是「校园电信」「校园联通」而不是「电信」「联通」——
+#: 这是**校内宽带**（走 R1=1 / R3=1），跟账号加 @telecom 后缀的
+#: 纯运营商套餐不是一回事，所以分开映射。
+CODE_TO_SERVICE: Dict[str, str] = {
+    "campus": "校园用户",
+    "other": "校园其他",
+    "cmcc": "移动",
+    "telecom": "电信",
+    "unicom": "联通",
+    "campus_telecom": "校园电信",
+    "campus_unicom": "校园联通",
 }
 
 SUCCESS_MARKER = "Dr.COMWebLoginID_3.htm"
@@ -74,15 +94,37 @@ class DrComProvider(Provider):
         return min(score, 1.0)
 
     # ------------------------------------------------------------ 登录
-    def login(self, portal: str, username: str, password: str, client_ip: str = "", mac: str = "") -> LoginResult:
-        ip = client_ip or local_ip()
-        mac = mac or local_mac()
-        carrier = str(self.opt("carrier", "校园用户"))
-        r1, r3, para, suffix = CARRIERS.get(carrier, CARRIERS["校园用户"])
+    # ------------------------------------------------------------ 运营商
+    def resolve_carrier(self) -> Tuple[str, str, str, str]:
+        """把 ``carrier`` 选项解析成 ``(R1, R3, para, 账号后缀)``。
+
+        优先级：显式 ``r1``/``r3``/``para`` 选项 > ``carrier`` 选项 > 默认「校园用户」。
+
+        单独留 ``r1``/``r3``/``para`` 是给「我们学校页面上的选项特别怪」的人
+        留的逃生舱 —— 文档里直接把登录页的 HTML 抄过来对照就行。
+        """
+        raw = str(self.opt("carrier", "") or "").strip()
+        code = carrier_mod.normalize(raw) if raw else "campus"
+
+        service = CODE_TO_SERVICE.get(code, "校园用户")
+        r1, r3, para, suffix = CARRIERS.get(service, CARRIERS["校园用户"])
+
+        # 认不出的自定义运营商：当账号后缀处理（很多学校就是这么做的）
+        if code and not carrier_mod.is_known(code):
+            r1, r3, para = CARRIERS["校园其他"][0], CARRIERS["校园其他"][1], ""
+            suffix = carrier_mod.suffix_for(code)
+
         r1 = str(self.opt("r1", r1))
         r3 = str(self.opt("r3", r3))
         para = str(self.opt("para", para))
-        user = username + str(self.opt("username_suffix", suffix))
+        suffix = str(self.opt("username_suffix", suffix))
+        return r1, r3, para, suffix
+
+    def login(self, portal: str, username: str, password: str, client_ip: str = "", mac: str = "") -> LoginResult:
+        ip = client_ip or local_ip()
+        mac = mac or local_mac()
+        r1, r3, para, suffix = self.resolve_carrier()
+        user = username + suffix
 
         errors: List[str] = []
 

@@ -48,25 +48,8 @@ define Package/campusnet/description
   Works on OpenWrt with procd + cron.
 endef
 
-# ============================================================
-# 自定义 Build/Compile：显式构建 wheel 并安装
-# 不再依赖 Py3Package 宏，避免它只安装不构建的问题
-# ============================================================
 define Build/Compile
-	# 第一步：用 host python 构建 wheel
-	cd $(PKG_BUILD_DIR) && \
-		$(STAGING_DIR_HOSTPKG)/bin/python3 -m build \
-			--wheel \
-			--no-isolation \
-			--outdir $(PKG_BUILD_DIR)/openwrt-build \
-			.
-	# 第二步：把 wheel 安装到 PKG_INSTALL_DIR
-	$(STAGING_DIR_HOSTPKG)/bin/python3 -m installer \
-		--overwrite-existing \
-		--destdir $(PKG_INSTALL_DIR) \
-		--no-compile-bytecode \
-		--prefix /usr \
-		$(PKG_BUILD_DIR)/openwrt-build/*.whl
+	cd $(PKG_BUILD_DIR) && $(STAGING_DIR_HOSTPKG)/bin/python3 -m build --wheel --no-isolation --outdir openwrt-build . && $(STAGING_DIR_HOSTPKG)/bin/python3 -m installer --overwrite-existing --destdir $(PKG_INSTALL_DIR) --no-compile-bytecode --prefix /usr openwrt-build/*.whl
 endef
 
 define Package/campusnet/install

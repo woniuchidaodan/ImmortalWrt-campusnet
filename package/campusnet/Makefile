@@ -17,6 +17,19 @@ PKG_LICENSE:=MIT
 PKG_LICENSE_FILES:=LICENSE
 PKG_MAINTAINER:=demo133
 
+PKG_BUILD_DEPENDS:= \
+	python3/host \
+	python-build/host \
+	python-installer/host \
+	python-wheel/host \
+	python-setuptools/host \
+	python-flit-core/host \
+	python-hatchling/host \
+	python-poetry-core/host \
+	python-packaging/host \
+	python-pyproject-hooks/host \
+	python-pip/host
+
 include $(INCLUDE_DIR)/package.mk
 include $(TOPDIR)/feeds/packages/lang/python/python3-package.mk
 

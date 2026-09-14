@@ -4,7 +4,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=campusnet
-PKG_VERSION:=1.0.0
+PKG_VERSION:=0.1.0
 PKG_RELEASE:=1
 
 PKG_SOURCE_PROTO:=git
@@ -48,13 +48,6 @@ define Package/campusnet/description
   Works on OpenWrt with procd + cron.
 endef
 
-define Build/Compile
-	cd $(PKG_BUILD_DIR) && $(STAGING_DIR_HOSTPKG)/bin/python3 -m build --wheel --no-isolation --outdir openwrt-build . && $(STAGING_DIR_HOSTPKG)/bin/python3 -m installer --overwrite-existing --destdir $(PKG_INSTALL_DIR) --no-compile-bytecode --prefix /usr openwrt-build/*.whl
-endef
-
-define Package/campusnet/install
-	$(INSTALL_DIR) $(1)/usr/bin
-	$(INSTALL_BIN) $(PKG_INSTALL_DIR)/usr/bin/campusnet $(1)/usr/bin/
-endef
-
+$(eval $(call Py3Package,campusnet))
 $(eval $(call BuildPackage,campusnet))
+$(eval $(call BuildPackage,campusnet-src))

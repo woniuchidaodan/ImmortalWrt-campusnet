@@ -33,17 +33,24 @@ jobs:
           SDK_URL="https://downloads.immortalwrt.org/releases/24.10.0/targets/mediatek/filogic/${SDK_FILE}"
           echo "下载地址: $SDK_URL"
           wget -q --show-progress "$SDK_URL"
+          echo "=== 下载完成，当前目录内容 ==="
           ls -la
+          echo "=== 文件大小 ==="
           du -h "$SDK_FILE"
+          echo "=== 开始解压 ==="
           tar -I zstd -xf "$SDK_FILE"
+          echo "=== 解压完成，当前目录内容 ==="
           ls -la
+          echo "=== 查找 SDK 目录 ==="
           SDK_DIR=$(find . -maxdepth 1 -type d -name "immortalwrt-sdk-*" | head -1)
           if [ -z "$SDK_DIR" ]; then
             echo "错误：找不到 immortalwrt-sdk-* 目录"
             find . -maxdepth 1 -type d
             exit 1
           fi
+          echo "找到 SDK 目录: $SDK_DIR"
           mv "$SDK_DIR" sdk
+          echo "=== 重命名后 ==="
           ls -la sdk/ | head -20
 
       - name: Update feeds
@@ -82,29 +89,33 @@ jobs:
         run: |
           set -e
           mkdir -p /tmp/campusnet-out
-          PKGDIR="sdk/bin/packages/aarch64_cortex-a53/action"
 
-          echo "=== 源目录内容 ==="
-          ls -la "$PKGDIR" | grep -E 'campusnet' || true
+          echo "=== 列出 sdk/bin/packages 下所有子目录 ==="
+          find sdk/bin/packages -maxdepth 3 -type d
 
-          for pattern in \
-            "campusnet_*.ipk" \
-            "campusnet-src_*.ipk" \
-            "luci-app-campusnet_*.ipk" \
-            "luci-i18n-campusnet-zh-cn_*.ipk"
-          do
-            for f in $PKGDIR/$pattern; do
-              [ -f "$f" ] && cp "$f" /tmp/campusnet-out/
-            done
-          done
+          echo "=== 查找所有 campusnet 相关的 ipk ==="
+          find sdk/bin/packages -type f \( \
+            -name "campusnet_*.ipk" -o \
+            -name "campusnet-src_*.ipk" -o \
+            -name "luci-app-campusnet_*.ipk" -o \
+            -name "luci-i18n-campusnet-zh-cn_*.ipk" \
+          \) | tee /tmp/found.txt
 
-          echo "=== 收集到的文件 ==="
+          echo "=== 复制到 /tmp/campusnet-out ==="
+          while IFS= read -r f; do
+            [ -f "$f" ] && cp "$f" /tmp/campusnet-out/
+          done < /tmp/found.txt
+
+          echo "=== 收集结果 ==="
           ls -la /tmp/campusnet-out/
 
           COUNT=$(ls -1 /tmp/campusnet-out/*.ipk 2>/dev/null | wc -l)
           echo "共收集到 $COUNT 个文件"
-          if [ "$COUNT" -ne 4 ]; then
-            echo "警告：期望 4 个文件，实际 $COUNT 个"
+          if [ "$COUNT" -lt 4 ]; then
+            echo "错误：文件数量不足，期望至少 4 个，实际 $COUNT 个"
+            echo "=== 兜底：列出整个 packages 目录 ==="
+            find sdk/bin/packages -type f -name "*.ipk" | head -50
+            exit 1
           fi
 
       - name: Upload IPK artifact

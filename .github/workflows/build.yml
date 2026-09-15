@@ -1,0 +1,99 @@
+name: Build campusnet IPK (24.10.0, aarch64_cortex-a53)
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    name: Build IPK for aarch64_cortex-a53
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential ccache git libncurses-dev libssl-dev \
+            zstd python3 python3-pip python3-setuptools rsync \
+            unzip zlib1g-dev file wget subversion flex bison gawk \
+            gettext texinfo libtool autoconf automake
+
+      - name: Download and extract SDK 24.10.0
+        run: |
+          set -eux
+          SDK_FILE="immortalwrt-sdk-24.10.0-mediatek-filogic_gcc-13.3.0_musl.Linux-x86_64.tar.zst"
+          SDK_URL="https://downloads.immortalwrt.org/releases/24.10.0/targets/mediatek/filogic/${SDK_FILE}"
+          wget -q --show-progress "$SDK_URL"
+          tar -I zstd -xf "$SDK_FILE"
+          SDK_DIR=$(find . -maxdepth 1 -type d -name "immortalwrt-sdk-*" | head -1)
+          mv "$SDK_DIR" sdk
+
+      - name: Update feeds
+        run: |
+          cd sdk
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+
+      - name: Inject campusnet packages
+        run: |
+          set -e
+          cp -r package/campusnet sdk/package/
+          cp -r package/luci-app-campusnet sdk/package/
+
+          echo "=== 检查关键文件 ==="
+          ls -la sdk/package/luci-app-campusnet/htdocs/luci-static/resources/view/campusnet/
+          ls -la sdk/package/luci-app-campusnet/files/
+          ls -la sdk/package/luci-app-campusnet/po/zh_Hans/
+
+      - name: Configure (defconfig)
+        run: |
+          cd sdk
+          make defconfig
+
+      - name: Build campusnet
+        run: |
+          cd sdk
+          make package/campusnet/compile V=s -j$(nproc)
+
+      - name: Build luci-app-campusnet
+        run: |
+          cd sdk
+          make package/luci-app-campusnet/compile V=s -j$(nproc)
+
+      - name: Build luci-i18n-campusnet-zh-cn
+        run: |
+          cd sdk
+          make package/luci-i18n-campusnet-zh-cn/compile V=s -j$(nproc) || true
+
+      - name: Collect only campusnet IPKs
+        run: |
+          set -e
+          mkdir -p /tmp/campusnet-out
+          find sdk/bin/packages -type f \( \
+            -name "campusnet_*.ipk" -o \
+            -name "campusnet-src_*.ipk" -o \
+            -name "luci-app-campusnet_*.ipk" -o \
+            -name "luci-i18n-campusnet-*.ipk" \
+          \) -exec cp {} /tmp/campusnet-out/ \;
+          ls -la /tmp/campusnet-out/
+          COUNT=$(ls -1 /tmp/campusnet-out/*.ipk 2>/dev/null | wc -l)
+          echo "共收集到 $COUNT 个文件"
+          if [ "$COUNT" -lt 4 ]; then
+            echo "错误：期望 4 个文件，实际 $COUNT 个"
+            exit 1
+          fi
+
+      - name: Upload IPK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: campusnet-aarch64_cortex-a53-ipk
+          path: /tmp/campusnet-out/*.ipk
+          if-no-files-found: error

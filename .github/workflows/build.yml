@@ -85,6 +85,11 @@ jobs:
           cd sdk
           make package/luci-app-campusnet/compile V=s -j$(nproc)
 
+      - name: Build luci-i18n-campusnet-zh-cn
+        run: |
+          cd sdk
+          make package/luci-i18n-campusnet-zh-cn/compile V=s -j$(nproc) || true
+
       - name: Collect only campusnet IPKs
         run: |
           set -e
@@ -112,9 +117,7 @@ jobs:
           COUNT=$(ls -1 /tmp/campusnet-out/*.ipk 2>/dev/null | wc -l)
           echo "共收集到 $COUNT 个文件"
           if [ "$COUNT" -lt 4 ]; then
-            echo "错误：文件数量不足，期望至少 4 个，实际 $COUNT 个"
-            echo "=== 兜底：列出整个 packages 目录 ==="
-            find sdk/bin/packages -type f -name "*.ipk" | head -50
+            echo "错误：期望 4 个文件，实际 $COUNT 个"
             exit 1
           fi
 

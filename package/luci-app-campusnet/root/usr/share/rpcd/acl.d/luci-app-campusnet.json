@@ -1,16 +1,1 @@
-{
-	"luci-app-campusnet": {
-		"description": "Grant access to campusnet configuration",
-		"read": {
-			"uci": [ "campusnet" ],
-			"file": {
-				"/usr/bin/campusnet": [ "exec" ],
-				"/usr/bin/logread": [ "exec" ],
-				"/usr/libexec/campusnet-config-sync": [ "exec" ]
-			}
-		},
-		"write": {
-			"uci": [ "campusnet" ]
-		}
-	}
-}
+0

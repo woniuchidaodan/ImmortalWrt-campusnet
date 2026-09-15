@@ -20,11 +20,11 @@ msgstr "启用"
 msgid "开启后，campusnet 将通过 cron 定时检查并自动登录。"
 msgstr "开启后，campusnet 将通过 cron 定时检查并自动登录。"
 
-msgid "学号 / 上网账号"
-msgstr "学号 / 上网账号"
+msgid "校园网登录账号"
+msgstr "校园网登录账号"
 
-msgid "你的校园网登录账号。"
-msgstr "你的校园网登录账号。"
+msgid "通常为学号，也可能是手机号、工号或学校分配的其他账号。"
+msgstr "通常为学号，也可能是手机号、工号或学校分配的其他账号。"
 
 msgid "密码"
 msgstr "密码"

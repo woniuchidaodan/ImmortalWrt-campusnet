@@ -33,24 +33,17 @@ jobs:
           SDK_URL="https://downloads.immortalwrt.org/releases/24.10.0/targets/mediatek/filogic/${SDK_FILE}"
           echo "下载地址: $SDK_URL"
           wget -q --show-progress "$SDK_URL"
-          echo "=== 下载完成，当前目录内容 ==="
           ls -la
-          echo "=== 文件大小 ==="
           du -h "$SDK_FILE"
-          echo "=== 开始解压 ==="
           tar -I zstd -xf "$SDK_FILE"
-          echo "=== 解压完成，当前目录内容 ==="
           ls -la
-          echo "=== 查找 SDK 目录 ==="
           SDK_DIR=$(find . -maxdepth 1 -type d -name "immortalwrt-sdk-*" | head -1)
           if [ -z "$SDK_DIR" ]; then
             echo "错误：找不到 immortalwrt-sdk-* 目录"
             find . -maxdepth 1 -type d
             exit 1
           fi
-          echo "找到 SDK 目录: $SDK_DIR"
           mv "$SDK_DIR" sdk
-          echo "=== 重命名后 ==="
           ls -la sdk/ | head -20
 
       - name: Update feeds
@@ -85,18 +78,38 @@ jobs:
           cd sdk
           make package/luci-app-campusnet/compile V=s -j$(nproc)
 
-      - name: List produced IPK files
+      - name: Collect only campusnet IPKs
         run: |
-          echo "=== 产出的 IPK 文件 ==="
-          find sdk/bin/packages/aarch64_cortex-a53 -name "*.ipk" -type f || true
+          set -e
+          mkdir -p /tmp/campusnet-out
+          PKGDIR="sdk/bin/packages/aarch64_cortex-a53/action"
+
+          echo "=== 源目录内容 ==="
+          ls -la "$PKGDIR" | grep -E 'campusnet' || true
+
+          for pattern in \
+            "campusnet_*.ipk" \
+            "campusnet-src_*.ipk" \
+            "luci-app-campusnet_*.ipk" \
+            "luci-i18n-campusnet-zh-cn_*.ipk"
+          do
+            for f in $PKGDIR/$pattern; do
+              [ -f "$f" ] && cp "$f" /tmp/campusnet-out/
+            done
+          done
+
+          echo "=== 收集到的文件 ==="
+          ls -la /tmp/campusnet-out/
+
+          COUNT=$(ls -1 /tmp/campusnet-out/*.ipk 2>/dev/null | wc -l)
+          echo "共收集到 $COUNT 个文件"
+          if [ "$COUNT" -ne 4 ]; then
+            echo "警告：期望 4 个文件，实际 $COUNT 个"
+          fi
 
       - name: Upload IPK artifact
         uses: actions/upload-artifact@v4
         with:
           name: campusnet-aarch64_cortex-a53-ipk
-          path: |
-            sdk/bin/packages/aarch64_cortex-a53/base/*.ipk
-            sdk/bin/packages/aarch64_cortex-a53/action/*.ipk
-            sdk/bin/packages/aarch64_cortex-a53/luci/*.ipk
-            sdk/bin/packages/aarch64_cortex-a53/*/*.ipk
+          path: /tmp/campusnet-out/*.ipk
           if-no-files-found: error

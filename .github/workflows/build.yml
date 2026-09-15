@@ -48,8 +48,10 @@ jobs:
           cp -r package/campusnet sdk/package/
           cp -r package/luci-app-campusnet sdk/package/
 
-          echo "=== 检查关键文件 ==="
+          echo "=== 检查关键文件是否存在 ==="
           ls -la sdk/package/luci-app-campusnet/htdocs/luci-static/resources/view/campusnet/
+          ls -la sdk/package/luci-app-campusnet/root/usr/share/luci/menu.d/
+          ls -la sdk/package/luci-app-campusnet/root/usr/share/rpcd/acl.d/
           ls -la sdk/package/luci-app-campusnet/files/
           ls -la sdk/package/luci-app-campusnet/po/zh_Hans/
 
@@ -83,7 +85,10 @@ jobs:
             -name "luci-app-campusnet_*.ipk" -o \
             -name "luci-i18n-campusnet-*.ipk" \
           \) -exec cp {} /tmp/campusnet-out/ \;
+
+          echo "=== 收集结果 ==="
           ls -la /tmp/campusnet-out/
+
           COUNT=$(ls -1 /tmp/campusnet-out/*.ipk 2>/dev/null | wc -l)
           echo "共收集到 $COUNT 个文件"
           if [ "$COUNT" -lt 4 ]; then
@@ -92,7 +97,7 @@ jobs:
           fi
 
       - name: Upload IPK artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: campusnet-aarch64_cortex-a53-ipk
           path: /tmp/campusnet-out/*.ipk

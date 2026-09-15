@@ -1,18 +1,1 @@
-{
-	"admin/services/campusnet": {
-		"title": "校园网自动登录",
-		"order": 30,
-		"action": {
-			"type": "view",
-			"path": "campusnet/campusnet"
-		}
-	},
-	"admin/services/campusnet/log": {
-		"title": "运行日志",
-		"order": 31,
-		"action": {
-			"type": "view",
-			"path": "campusnet/log"
-		}
-	}
-}
+0

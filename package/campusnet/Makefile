@@ -45,7 +45,6 @@ endef
 define Package/campusnet/description
   Zero-dependency CLI tool for campus network portal auto-login.
   Supports Dr.COM, Srun, Ruijie, and Huawei eportal authentication.
-  Works on OpenWrt with procd + cron.
 endef
 
 $(eval $(call Py3Package,campusnet))

@@ -8,7 +8,7 @@ include $(TOPDIR)/feeds/luci/luci.mk
 
 # 全部显式安装，不依赖 luci.mk 的 install/default 宏
 define Package/luci-app-campusnet/install
-	# 1. 前端 JS（关键：显式装到 /www/）
+	# 1. 前端 JS（必须显式装到 /www/）
 	$(INSTALL_DIR) $(1)/www/luci-static/resources/view/campusnet
 	$(INSTALL_DATA) ./htdocs/luci-static/resources/view/campusnet/campusnet.js \
 		$(1)/www/luci-static/resources/view/campusnet/campusnet.js
@@ -29,11 +29,11 @@ define Package/luci-app-campusnet/install
 	$(INSTALL_DIR) $(1)/etc/config
 	$(INSTALL_CONF) ./files/campusnet.config $(1)/etc/config/campusnet
 
-	# 5. uci-defaults
+	# 5. uci-defaults 补救脚本
 	$(INSTALL_DIR) $(1)/etc/uci-defaults
 	$(INSTALL_BIN) ./files/luci-app-campusnet.defaults $(1)/etc/uci-defaults/luci-app-campusnet
 
-	# 6. config-sync 脚本
+	# 6. config-sync 同步脚本
 	$(INSTALL_DIR) $(1)/usr/libexec
 	$(INSTALL_BIN) ./files/campusnet-config-sync $(1)/usr/libexec/campusnet-config-sync
 endef

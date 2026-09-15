@@ -29,37 +29,27 @@ jobs:
       - name: Download and extract SDK 24.10.0
         run: |
           set -eux
-
           SDK_FILE="immortalwrt-sdk-24.10.0-mediatek-filogic_gcc-13.3.0_musl.Linux-x86_64.tar.zst"
           SDK_URL="https://downloads.immortalwrt.org/releases/24.10.0/targets/mediatek/filogic/${SDK_FILE}"
-
           echo "下载地址: $SDK_URL"
           wget -q --show-progress "$SDK_URL"
-
           echo "=== 下载完成，当前目录内容 ==="
           ls -la
-
           echo "=== 文件大小 ==="
           du -h "$SDK_FILE"
-
           echo "=== 开始解压 ==="
           tar -I zstd -xf "$SDK_FILE"
-
           echo "=== 解压完成，当前目录内容 ==="
           ls -la
-
           echo "=== 查找 SDK 目录 ==="
           SDK_DIR=$(find . -maxdepth 1 -type d -name "immortalwrt-sdk-*" | head -1)
           if [ -z "$SDK_DIR" ]; then
             echo "错误：找不到 immortalwrt-sdk-* 目录"
-            echo "当前目录的所有子目录："
             find . -maxdepth 1 -type d
             exit 1
           fi
-
           echo "找到 SDK 目录: $SDK_DIR"
           mv "$SDK_DIR" sdk
-
           echo "=== 重命名后 ==="
           ls -la sdk/ | head -20
 
@@ -74,8 +64,11 @@ jobs:
           set -e
           cp -r package/campusnet sdk/package/
           cp -r package/luci-app-campusnet sdk/package/
+
           echo "已注入的包："
-          ls sdk/package/ | grep campusnet
+          ls -la sdk/package/ | grep campusnet
+          echo "=== files/ 目录 ==="
+          ls -la sdk/package/luci-app-campusnet/files/ 2>/dev/null || echo "无 files 目录"
 
       - name: Configure (defconfig)
         run: |

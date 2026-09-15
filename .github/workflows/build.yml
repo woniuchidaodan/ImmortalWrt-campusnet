@@ -1,4 +1,4 @@
-name: Build campusnet IPK (single package for all 24.10.x)
+name: Build campusnet IPK (24.10.x, aarch64_cortex-a53)
 
 on:
   workflow_dispatch:
@@ -8,7 +8,7 @@ on:
 
 jobs:
   build:
-    name: Build single IPK compatible with all 24.10.x
+    name: Build IPK for aarch64_cortex-a53
     runs-on: ubuntu-latest
 
     steps:
@@ -17,44 +17,69 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Resolve SDK URL (24.10.0 for max compatibility)
-        id: sdk
+      - name: Install build dependencies
         run: |
-          VERSION="24.10.0"
-          ARCH_DIR="mediatek/filogic"
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential ccache git libncurses-dev libssl-dev \
+            zstd python3 python3-pip python3-setuptools rsync \
+            unzip zlib1g-dev file wget subversion flex bison gawk \
+            gettext texinfo libtool autoconf automake
 
-          SDK_URL="https://downloads.immortalwrt.org/releases/$VERSION/targets/$ARCH_DIR/"
-          SDK_FILE=$(curl -sL "$SDK_URL" \
-            | grep -oE 'immortalwrt-sdk-'"$VERSION"'-mediatek-filogic_[^"]*\.tar\.zst' \
-            | head -1)
+      - name: Download and extract SDK 24.10.0
+        run: |
+          set -e
+          SDK_FILE="immortalwrt-sdk-24.10.0-mediatek-filogic_gcc-13.3.0_musl.Linux-x86_64.tar.zst"
+          SDK_URL="https://downloads.immortalwrt.org/releases/24.10.0/targets/mediatek/filogic/${SDK_FILE}"
 
-          if [ -z "$SDK_FILE" ]; then
-            echo "错误：未找到 $VERSION 的 SDK 文件"
-            curl -sL "$SDK_URL" | grep -oE 'immortalwrt-sdk-[^"]*\.tar\.zst' | head
-            exit 1
-          fi
+          echo "下载: $SDK_URL"
+          wget -q --show-progress "$SDK_URL"
+          tar -I zstd -xf "$SDK_FILE"
+          mv immortalwrt-sdk-* sdk
+          echo "SDK 解压完成"
+          ls sdk/
 
-          FULL_URL="${SDK_URL}${SDK_FILE}"
-          echo "使用 SDK: $FULL_URL"
-          echo "url=$FULL_URL" >> $GITHUB_OUTPUT
+      - name: Update feeds
+        run: |
+          cd sdk
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
 
-      - name: Build package
-        uses: immortalwrt/gh-action-sdk@v8
-        env:
-          ARCH: aarch64_cortex-a53
-          PACKAGES: campusnet luci-app-campusnet
-          V: s
-          SDK_URL: ${{ steps.sdk.outputs.url }}
+      - name: Inject campusnet packages
+        run: |
+          set -e
+          cp -r package/campusnet sdk/package/
+          cp -r package/luci-app-campusnet sdk/package/
+          echo "已注入的包："
+          ls sdk/package/ | grep campusnet
+
+      - name: Configure (defconfig)
+        run: |
+          cd sdk
+          make defconfig
+
+      - name: Build campusnet
+        run: |
+          cd sdk
+          make package/campusnet/compile V=s -j$(nproc)
+
+      - name: Build luci-app-campusnet
+        run: |
+          cd sdk
+          make package/luci-app-campusnet/compile V=s -j$(nproc)
+
+      - name: List produced IPK files
+        run: |
+          echo "=== 产出的 IPK 文件 ==="
+          find sdk/bin/packages/aarch64_cortex-a53 -name "*.ipk" -type f || true
 
       - name: Upload IPK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: campusnet-aarch64_cortex-a53-compat-24.10.x
+          name: campusnet-aarch64_cortex-a53-ipk
           path: |
-            bin/packages/aarch64_cortex-a53/base/*.apk
-            bin/packages/aarch64_cortex-a53/action/*.apk
-            bin/packages/aarch64_cortex-a53/luci/*.apk
-            bin/packages/aarch64_cortex-a53/base/*.ipk
-            bin/packages/aarch64_cortex-a53/action/*.ipk
-            bin/packages/aarch64_cortex-a53/luci/*.ipk
+            sdk/bin/packages/aarch64_cortex-a53/base/*.ipk
+            sdk/bin/packages/aarch64_cortex-a53/action/*.ipk
+            sdk/bin/packages/aarch64_cortex-a53/luci/*.ipk
+            sdk/bin/packages/aarch64_cortex-a53/*/*.ipk
           if-no-files-found: error

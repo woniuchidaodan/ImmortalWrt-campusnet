@@ -3,9 +3,15 @@
 		"description": "Grant access to campusnet configuration",
 		"read": {
 			"uci": [ "campusnet" ],
+			"ubus": {
+				"log": [ "read" ]
+			},
 			"file": {
 				"/usr/bin/campusnet": [ "exec" ],
+<<<<<<< HEAD
 				"/usr/bin/logread": [ "exec" ],
+=======
+>>>>>>> 8ab3514 (Update ACL and log.js to use rpcd log object)
 				"/usr/libexec/campusnet-config-sync": [ "exec" ]
 			}
 		},
